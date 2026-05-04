@@ -1,4 +1,5 @@
-# Docker file lists all the commands needed to setup a fresh linux instance to
+ Docker file lists all the commands needed to setup a fresh linux 
+instance to
 # run the application specified. docker-compose does not use this.
 
 # Grab a python image
@@ -7,29 +8,28 @@ SHELL ["/bin/bash", "--login", "-c"]
 
 # Just needed for all things python (note this is setting an env variable)
 ENV PYTHONUNBUFFERED 1
-# Needed for correct settings input
-ENV IN_DOCKER 1
 
-# Setup Node/NPM
-RUN apt-get update
-RUN apt-get install -y curl nginx
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+FROM python:3.11
 
-# Copy all our files into the baseimage and cd to that directory
-WORKDIR /tcd
-COPY . /tcd/
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV IN_DOCKER=1
 
-RUN nvm install && nvm use
+WORKDIR /app
 
-# Set git to use HTTPS (SSH is often blocked by firewalls)
-RUN git config --global url."https://".insteadOf git://
+RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
+    libpq-dev
 
-# Install our node/python requirements
+COPY requirements.txt /app/
+
 RUN pip install --upgrade pip
-RUN pip install pipenv
-RUN pipenv install --system --deploy
-RUN npm ci
+RUN pip install -r requirements.txt
 
-# Compile all the static files
-RUN npm run build
-RUN python ./tabbycat/manage.py collectstatic --noinput -v 0
+COPY . /app/
+
+RUN python manage.py migrate || true
+RUN python manage.py collectstatic --noinput || true
+
+CMD ["gunicorn", "tabbycat.wsgi:application", "--bind", "0.0.0.0:8000"]
